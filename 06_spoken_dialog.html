@@ -24,11 +24,18 @@ Language:
 <button id="toggleLanguageButton">日本語</button>
 </p>
 
+<p>
+  Speed: 
+  <input type="range" id="speedRange" min="0.5" max="2" step="0.1" value="1.0">
+</p>
+
+
 <script>
 const startButton = document.querySelector('#startButton'); // 開始ボタン
 const stopButton = document.querySelector('#stopButton'); // 停止ボタン
 const resultOutput = document.querySelector('#resultOutput'); // 結果出力エリア
 const toggleLanguageButton = document.querySelector('#toggleLanguageButton'); // 言語切り替えボタン
+const speedRange = document.querySelector('#speedRange'); // 速度調整
 
 //応答の定義（ハッシュ）
 var response = {
@@ -36,12 +43,13 @@ var response = {
 	"好きな,色": "オレンジです",
 	"好きな,スポーツ": "けん玉です",
 	"好きな,食べ物": "焼肉です",
-	"和歌山,天気": "和歌山の天気はたぶん晴れでしょう",
-	"大阪,天気": "大阪の天気は雨です。",
-	"明日,天気": "明日の天気は曇りだと思います",
-	"明日,和歌山,天気": "明日の和歌山の天気はずばり雪です",
 	"Who,you": "I am not Alexa",
 	"What,music": "I like to rock",
+	"和歌山の天気": ["和歌山県の天気予報を表示します", "https://weather.yahoo.co.jp/weather/jp/30/"],
+    "大阪の天気": ["大阪府の天気予報を表示します", "https://weather.yahoo.co.jp/weather/jp/27/"],
+    "京都の天気": ["京都府の天気予報を表示します", "https://weather.yahoo.co.jp/weather/jp/26/"],
+    "奈良の天気": ["奈良県の天気予報を表示します", "https://weather.yahoo.co.jp/weather/jp/29/"],
+    "兵庫の天気": ["兵庫県の天気予報を表示します", "https://weather.yahoo.co.jp/weather/jp/28/"]
 };
 
 // ウエイクワードの定義
@@ -72,54 +80,70 @@ asr.continuous = true; // 継続入力をオン
 let output = ''; // 出力
 
 // 認識結果が出力されたときのイベントハンドラ
-asr.onresult = function(event){
+asr.onresult = function(event) {
     let transcript = event.results[event.resultIndex][0].transcript; // 結果文字列
-	let transcript_previous = null; // 結果文字列（ひとつ前）
+    let transcript_previous = null; // 結果文字列（ひとつ前）
 
-    if(event.resultIndex > 0){
+    if (event.resultIndex > 0) {
         transcript_previous = event.results[event.resultIndex - 1][0].transcript;
     }
 
     let output_not_final = '';
     if (event.results[event.resultIndex].isFinal) { // 結果が確定（Final）のとき
-    
-    if(new RegExp(wake_word).test(transcript_previous)){
-	    asr.abort(); // 音声認識を停止
-	    let answer = response[transcript];
-	
-		let keys = Object.keys(response);
-		keys.forEach(function(key) {
-		let flag = true;
-		key.split(',').forEach(function(word) {
-		let pattern = new RegExp(word);
-		let flag_test = pattern.test(transcript);
-		flag = flag && flag_test;
-		});
-		if(flag){
-		answer = response[key];
-		console.log(key + " : " + answer);
-		}
-		});
-        
-        if(typeof answer == 'undefined'){
-	        answer = "ごめんなさい。わかりません。";
-    	}
-    	
-        output += transcript +'<br>'+ answer +'<br>';
 
-	    tts.text = answer;
-	    // 再生が終了（end）ときのイベントハンドラ（終了したときに実行される）
-	    tts.onend = function(event){
-	        asr.start(); // 音声認識を再開
-	    }
+        if (new RegExp(wake_word).test(transcript_previous)) {
+            asr.abort(); // 音声認識を停止
+            let answer = response[transcript];
 
-	    speechSynthesis.speak(tts); // 再生
-	    }
+            let keys = Object.keys(response);
+            keys.forEach(function(key) {
+                let flag = true;
+                key.split(',').forEach(function(word) {
+                    let pattern = new RegExp(word);
+                    let flag_test = pattern.test(transcript);
+                    flag = flag && flag_test;
+                });
+                if (flag) {
+                    answer = response[key];
+                    console.log(key + " : " + answer);
+                }
+            });
+
+            if (typeof answer == 'undefined') {
+                answer = "ごめんなさい。わかりません。";
+            }
+
+            output += transcript + '<br>' + answer + '<br>';
+
+            tts.text = answer;
+
+            // 応答にリンクが含まれている場合、リンクのURLを読み上げつつページ移動する
+            if (Array.isArray(answer)) {
+                let webpage = answer[1];
+                if (typeof webpage != 'undefined') {
+                    let message = answer[0];
+                    let confirmation = message + " ページに移動しますか？";
+                    if (confirm(confirmation)) {
+                        tts.onend = function(event) {
+                            window.location.href = webpage;
+                        };
+                    }
+                }
+            }
+
+            // 再生が終了（end）ときのイベントハンドラ（終了したときに実行される）
+            tts.onend = function(event) {
+                asr.start(); // 音声認識を再開
+            }
+
+            speechSynthesis.speak(tts); // 再生
+        }
     } else { // 結果がまだ未確定のとき
         output_not_final = '<span style="color:#ddd;">' + transcript + '</span>';
     }
     resultOutput.innerHTML = output + output_not_final;
 }
+
 
 // 開始ボタンのイベントハンドラ
 startButton.addEventListener('click', function() {
@@ -141,6 +165,11 @@ toggleLanguageButton.addEventListener('click', function() {
     // ボタンの表示も切り替える
     toggleLanguageButton.textContent = (recognitionLanguage === "ja-JP") ? "日本語" : "English";
 })
+
+// 速度調整用のinput要素のイベントハンドラ
+speedRange.addEventListener('input', function() {
+  tts.rate = parseFloat(speedRange.value);
+});
 
 </script>
 
