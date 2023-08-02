@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<meta http-equiv="Content-Style-Type" content="text/css">
+<meta http-equiv="Content-Script-Type" content="text/javascript">
+<title>Songs Title Search</title>
+</head>
+<body>
+
+<h1>歌詞から曲名検索</h1>
+<button id="startVoiceInputButton">音声入力を開始</button>
+<button id="stopVoiceInputButton">音声入力を停止</button>
+<div id="voiceInputStatus"></div>
+
+<div id="lyricsForm" style="display: none;">
+<form onsubmit="return searchSongByLyrics()">
+
+<label for="lyrics">歌詞を入力してください：</label>
+<input type="text" id="lyrics" required>
+<button type="submit">検索</button>
+</form>
+</div>
+
+<div id="result"></div>
+
+<p>
+    speed：
+    <input type="range" id="speedRange" min="0.5" max="2" step="0.1" value="1.0">
+</p>
+
+<script>
+    var recognition = new (webkitSpeechRecognition || SpeechRecognition)();
+    recognition.lang = "ja-JP";
+    recognition.continuous = true;
+    recognition.interimResults = true;
+
+    var voiceInputStatus = document.getElementById("voiceInputStatus");
+    var lyricsInput = document.getElementById("lyrics");
+    var startVoiceInputButton = document.getElementById("startVoiceInputButton");
+    var stopVoiceInputButton = document.getElementById("stopVoiceInputButton");
+
+    startVoiceInputButton.addEventListener("click", function() {
+        voiceInputStatus.innerHTML = "音声入力中...";
+        recognition.start();
+        startVoiceInputButton.disabled = true;
+        stopVoiceInputButton.disabled = false;
+        document.getElementById("lyricsForm").style.display = "block";
+    });
+
+        stopVoiceInputButton.addEventListener("click", function() {
+            recognition.stop();
+            voiceInputStatus.innerHTML = "音声入力が停止しました。";
+            startVoiceInputButton.disabled = false;
+            stopVoiceInputButton.disabled = true;
+        });
+
+        recognition.onresult = function(event) {
+            var interimTranscript = "";
+            for (var i = event.resultIndex; i < event.results.length; ++i) {
+                if (event.results[i].isFinal) {
+                    lyricsInput.value = event.results[i][0].transcript;
+                } else {
+                    interimTranscript += event.results[i][0].transcript;
+                }
+            }
+            if (interimTranscript !== "") {
+                lyricsInput.value = interimTranscript;
+            }
+        };
+
+        recognition.onend = function() {
+            voiceInputStatus.innerHTML = "音声入力が停止しました。";
+            startVoiceInputButton.disabled = false;
+            stopVoiceInputButton.disabled = true;
+        };
+
+        function searchSongByLyrics() { //API
+            var lyrics = document.getElementById("lyrics").value;
+            var apiKey = "HX-07coaeLyoKVYprWTixNnKinynf5E54C-FZ535dbfWMdS6IpeB7PMgnKg6O8UB";
+            var url = "https://api.genius.com/search?q=" + encodeURIComponent(lyrics);
+
+            var xhr = new XMLHttpRequest();
+            xhr.open("GET", url);
+            xhr.setRequestHeader("Authorization", "Bearer " + apiKey);
+            xhr.onload = function () {
+                if (xhr.status === 200) {
+                    var data = JSON.parse(xhr.responseText);
+                    var hits = data.response.hits;
+                    if (hits.length > 0) {
+                        var songTitle = hits[0].result.title;
+                        var artistName = hits[0].result.primary_artist.name;
+                        document.getElementById("result").innerHTML = "<p>曲名：" + songTitle + "</p><p>アーティスト：" + artistName + "</p>";
+                        speakResult(`曲名は${songTitle}、アーティストは${artistName}です。`);
+                    } else {
+                        document.getElementById("result").innerHTML = "<p>曲が見つかりませんでした。</p>";
+                        speakResult("ごめんなさい。その歌詞に合致する曲が見つかりませんでした。");
+                    }
+                } else {
+                    document.getElementById("result").innerHTML = "<p>エラーが発生しました。</p>";
+                    speakResult("エラーが発生しました。もう一度お試しください。");
+                }
+            };
+            xhr.send();
+            return false;
+        }
+
+        function speakResult(message) {
+            var tts = new SpeechSynthesisUtterance();
+            tts.lang = "ja-JP";
+            tts.text = message;
+            tts.rate = parseFloat(document.getElementById("speedRange").value); // 速度を入力値から取得
+            speechSynthesis.speak(tts);
+        }
+    </script>
+</body>
+</html>
